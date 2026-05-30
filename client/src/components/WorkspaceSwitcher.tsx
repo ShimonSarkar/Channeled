@@ -108,6 +108,8 @@ export function WorkspaceSwitcher() {
                   <input
                     className="text-input"
                     autoFocus
+                    autoComplete="off"
+                    name="workspace-rename"
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -166,6 +168,8 @@ export function WorkspaceSwitcher() {
               <input
                 className="text-input"
                 autoFocus
+                autoComplete="off"
+                name="workspace-new"
                 placeholder="Workspace name…"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}

@@ -69,6 +69,15 @@ select {
   margin: 0;
   letter-spacing: -0.01em;
 }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
 .topbar .spacer { flex: 1; }
 
 .icon-btn {
@@ -1768,7 +1777,31 @@ select.select option { background: var(--bg-elev); color: var(--text); }
   white-space: nowrap;
 }
 .ws-row-editing { padding: 4px; gap: 4px; }
-.ws-row-editing .text-input { flex: 1; }
+.ws-row-editing .text-input {
+  flex: 1;
+  background: var(--bg-sunken);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 13px;
+  outline: none;
+}
+.ws-row-editing .text-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-faint, rgba(255,165,0,0.25));
+}
+.ws-row-editing .text-input::placeholder { color: var(--text-faint); }
+.ws-row-editing .text-input:-webkit-autofill,
+.ws-row-editing .text-input:-webkit-autofill:hover,
+.ws-row-editing .text-input:-webkit-autofill:focus,
+.ws-row-editing .text-input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--text) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-sunken) inset !important;
+  box-shadow: 0 0 0 1000px var(--bg-sunken) inset !important;
+  caret-color: var(--text);
+  transition: background-color 9999s ease-in-out 0s;
+}
 .ws-row-add {
   width: 100%;
   background: transparent;
@@ -1787,4 +1820,86 @@ select.select option { background: var(--bg-elev); color: var(--text); }
   height: 1px;
   background: var(--border);
   margin: 6px 2px;
+}
+
+/* ---------- Mobile / touch responsive ---------- */
+@media (max-width: 720px) {
+  /* Layout: tighter padding so content uses full width */
+  .topbar {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .topbar h1 { font-size: 14px; }
+  .topbar-hint { display: none; }
+  .main {
+    padding: 16px 14px 96px;
+    gap: 18px;
+  }
+
+  /* Section cards: tighter headers, slightly tighter rows */
+  .section-header { padding: 12px 14px; }
+  .section-body { padding-bottom: 6px; }
+
+  /* Bigger tap targets */
+  .icon-btn { height: 36px; width: 36px; }
+  .btn { height: 36px; padding: 0 12px; }
+  .star-btn { height: 32px; width: 32px; }
+
+  /* Hide "New task" label, keep the + icon */
+  .topbar-add { padding: 0 12px; }
+  .topbar-add-label { display: none; }
+
+  /* Drag handles are hard to use on touch; hide them */
+  .section-header .drag-handle,
+  .task-row .drag-handle { display: none !important; }
+
+  /* Drawer becomes a bottom sheet */
+  .drawer {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 92dvh;
+    max-height: 92dvh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    animation: slide-up 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .drawer-header { padding: 12px 16px; }
+  .drawer-body { padding: 16px 16px 96px; }
+  .drawer-title { font-size: 20px; }
+  /* Stack field label above input so long values fit */
+  .field {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 6px 0;
+  }
+  .field-label { font-size: 11px; }
+
+  /* Modal: near-full-width sheet, slightly higher up */
+  .modal-backdrop {
+    padding-top: 8vh;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .modal { width: 100%; }
+  .modal-body { padding: 16px; }
+  .modal-footer { padding: 12px 16px; }
+
+  /* Workspace switcher dropdown shouldn't escape viewport */
+  .ws-switcher-menu { min-width: 220px; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* On touch devices, remove hover-only opacity tricks so handles aren't invisible */
+@media (hover: none) {
+  .section-header .drag-handle,
+  .task-row .drag-handle { opacity: 1; }
 }
