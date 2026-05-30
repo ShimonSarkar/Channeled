@@ -28,6 +28,7 @@ export function TaskDrawer({ state }: { state: AppState }) {
 
   // Per-task ref to track the last committed notes so we don't refire when remote echoes back
   const lastCommittedNotesRef = useRef<string>(task?.notes ?? '');
+  const notesDraftRef = useRef<string>(task?.notes ?? '');
   const taskIdRef = useRef<string | undefined>(task?.id);
   const debounceRef = useRef<number | null>(null);
 
@@ -35,11 +36,13 @@ export function TaskDrawer({ state }: { state: AppState }) {
     setTitleDraft(task?.title ?? '');
     setNotesDraft(task?.notes ?? '');
     lastCommittedNotesRef.current = task?.notes ?? '';
+    notesDraftRef.current = task?.notes ?? '';
     taskIdRef.current = task?.id;
   }, [task?.id]);
 
   // Debounced notes save
   useEffect(() => {
+    notesDraftRef.current = notesDraft;
     if (!task) return;
     if (notesDraft === lastCommittedNotesRef.current) return;
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
@@ -55,11 +58,12 @@ export function TaskDrawer({ state }: { state: AppState }) {
   // Flush on unmount / drawer close
   useEffect(() => {
     return () => {
+      const latest = notesDraftRef.current;
       if (
         taskIdRef.current &&
-        lastCommittedNotesRef.current !== notesDraft
+        lastCommittedNotesRef.current !== latest
       ) {
-        updateTask.mutate({ id: taskIdRef.current, body: { notes: notesDraft } });
+        updateTask.mutate({ id: taskIdRef.current, body: { notes: latest } });
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
