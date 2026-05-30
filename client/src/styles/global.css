@@ -1853,6 +1853,10 @@ select.select option { background: var(--bg-elev); color: var(--text); }
   .section-header .drag-handle,
   .task-row .drag-handle { display: none !important; }
 
+  /* Hide workstream chips in Today rows on small screens — the colored accent
+     strip already conveys workstream identity, and the chip eats title space. */
+  .today-row .ws-chip { display: none; }
+
   /* Drawer becomes a bottom sheet */
   .drawer {
     top: auto;
