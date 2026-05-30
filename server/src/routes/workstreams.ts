@@ -10,13 +10,31 @@ workstreamsRouter.post('/', async (req, res, next) => {
     const parsed = createWorkstreamSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    // Resolve target workspace (explicit, or first by position as a fallback).
+    let workspaceId = parsed.data.workspaceId;
+    if (!workspaceId) {
+      const ws = (
+        await q<{ id: string }>(`SELECT id FROM workspaces ORDER BY position ASC LIMIT 1`)
+      ).rows[0];
+      if (!ws) return res.status(400).json({ error: 'no_workspace' });
+      workspaceId = ws.id;
+    } else {
+      const ws = (
+        await q<{ id: string }>(`SELECT id FROM workspaces WHERE id = $1`, [workspaceId])
+      ).rows[0];
+      if (!ws) return res.status(400).json({ error: 'invalid_workspace' });
+    }
+
     const maxRow = (
-      await q<{ m: number }>('SELECT COALESCE(MAX(position), -1) as m FROM workstreams')
+      await q<{ m: number }>(
+        'SELECT COALESCE(MAX(position), -1) as m FROM workstreams WHERE workspace_id = $1',
+        [workspaceId]
+      )
     ).rows[0];
     const id = nanoid();
     await q(
-      'INSERT INTO workstreams (id, name, color, position, notes) VALUES ($1, $2, $3, $4, $5)',
-      [id, parsed.data.name, parsed.data.color, maxRow.m + 1, parsed.data.notes ?? '']
+      'INSERT INTO workstreams (id, workspace_id, name, color, position, notes) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, workspaceId, parsed.data.name, parsed.data.color, maxRow.m + 1, parsed.data.notes ?? '']
     );
     const row = (await q('SELECT * FROM workstreams WHERE id = $1', [id])).rows[0];
     res.status(201).json(row);

@@ -1,57 +1,109 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { AppState, Status, Subtask, Task } from '../types';
+import { useUI } from './ui';
 
-export const STATE_KEY = ['state'] as const;
+export const stateKey = (workspaceId: string | null | undefined) =>
+  ['state', workspaceId ?? null] as const;
 
 export function useAppState() {
-  return useQuery({ queryKey: STATE_KEY, queryFn: api.getState, staleTime: 1000 * 30 });
+  const currentWorkspaceId = useUI((s) => s.currentWorkspaceId);
+  const setCurrentWorkspaceId = useUI((s) => s.setCurrentWorkspaceId);
+  const query = useQuery({
+    queryKey: stateKey(currentWorkspaceId),
+    queryFn: () => api.getState(currentWorkspaceId),
+    staleTime: 1000 * 30,
+  });
+  // Server tells us which workspace it actually served (handles first-load + invalid id).
+  useEffect(() => {
+    const served = query.data?.currentWorkspaceId ?? null;
+    if (served && served !== currentWorkspaceId) {
+      setCurrentWorkspaceId(served);
+    }
+  }, [query.data?.currentWorkspaceId, currentWorkspaceId, setCurrentWorkspaceId]);
+  return query;
 }
 
-function patchState(qc: ReturnType<typeof useQueryClient>, updater: (s: AppState) => AppState) {
-  qc.setQueryData<AppState>(STATE_KEY, (s) => (s ? updater(s) : s));
+function patchState(
+  qc: ReturnType<typeof useQueryClient>,
+  workspaceId: string | null,
+  updater: (s: AppState) => AppState
+) {
+  qc.setQueryData<AppState>(stateKey(workspaceId), (s) => (s ? updater(s) : s));
+}
+
+function useActiveKey() {
+  const currentWorkspaceId = useUI((s) => s.currentWorkspaceId);
+  return { currentWorkspaceId, key: stateKey(currentWorkspaceId) };
+}
+
+// ---------- workspaces ----------
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createWorkspace,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
+  });
+}
+export function useUpdateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; body: { name?: string } }) =>
+      api.updateWorkspace(v.id, v.body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
+  });
+}
+export function useDeleteWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.deleteWorkspace,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
+  });
 }
 
 export function useCreateWorkstream() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createWorkstream,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useUpdateWorkstream() {
   const qc = useQueryClient();
+  const { currentWorkspaceId, key } = useActiveKey();
   return useMutation({
     mutationFn: (v: { id: string; body: { name?: string; color?: string; notes?: string } }) =>
       api.updateWorkstream(v.id, v.body),
     onMutate: async (v) => {
-      await qc.cancelQueries({ queryKey: STATE_KEY });
-      const prev = qc.getQueryData<AppState>(STATE_KEY);
-      patchState(qc, (s) => ({
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<AppState>(key);
+      patchState(qc, currentWorkspaceId, (s) => ({
         ...s,
         workstreams: s.workstreams.map((w) => (w.id === v.id ? { ...w, ...v.body } : w)),
       }));
       return { prev };
     },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(STATE_KEY, ctx.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(key, ctx.prev),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useDeleteWorkstream() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.deleteWorkstream,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useReorderWorkstreams() {
   const qc = useQueryClient();
+  const { currentWorkspaceId, key } = useActiveKey();
   return useMutation({
     mutationFn: api.reorderWorkstreams,
     onMutate: async (orderedIds) => {
-      await qc.cancelQueries({ queryKey: STATE_KEY });
-      const prev = qc.getQueryData<AppState>(STATE_KEY);
-      patchState(qc, (s) => ({
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<AppState>(key);
+      patchState(qc, currentWorkspaceId, (s) => ({
         ...s,
         workstreams: orderedIds
           .map((id, i) => {
@@ -62,8 +114,8 @@ export function useReorderWorkstreams() {
       }));
       return { prev };
     },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(STATE_KEY, ctx.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(key, ctx.prev),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 
@@ -71,18 +123,19 @@ export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useUpdateTask() {
   const qc = useQueryClient();
+  const { currentWorkspaceId, key } = useActiveKey();
   return useMutation({
     mutationFn: (v: { id: string; body: Parameters<typeof api.updateTask>[1] }) =>
       api.updateTask(v.id, v.body),
     onMutate: async (v) => {
-      await qc.cancelQueries({ queryKey: STATE_KEY });
-      const prev = qc.getQueryData<AppState>(STATE_KEY);
-      patchState(qc, (s) => ({
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<AppState>(key);
+      patchState(qc, currentWorkspaceId, (s) => ({
         ...s,
         tasks: s.tasks.map((t): Task => {
           if (t.id !== v.id) return t;
@@ -117,46 +170,47 @@ export function useUpdateTask() {
       }));
       return { prev };
     },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(STATE_KEY, ctx.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(key, ctx.prev),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useDeleteTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.deleteTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useRestoreTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.restoreTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function usePermanentDeleteTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.permanentDeleteTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useEmptyTrash() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.emptyTrash,
-    onSuccess: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }
 export function useReorderTasks() {
   const qc = useQueryClient();
+  const { currentWorkspaceId, key } = useActiveKey();
   return useMutation({
     mutationFn: api.reorderTasks,
     onMutate: async (v) => {
-      await qc.cancelQueries({ queryKey: STATE_KEY });
-      const prev = qc.getQueryData<AppState>(STATE_KEY);
-      patchState(qc, (s) => {
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<AppState>(key);
+      patchState(qc, currentWorkspaceId, (s) => {
         const idIndex = new Map(v.orderedIds.map((id, i) => [id, i]));
         return {
           ...s,
@@ -176,7 +230,7 @@ export function useReorderTasks() {
       });
       return { prev };
     },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(STATE_KEY, ctx.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: STATE_KEY }),
+    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(key, ctx.prev),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['state'] }),
   });
 }

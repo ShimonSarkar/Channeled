@@ -43,11 +43,18 @@ export async function withTx<T>(fn: (client: pg.PoolClient) => Promise<T>): Prom
 }
 
 // SQLite-compatible timestamp literal: "YYYY-MM-DD HH:MM:SS" in UTC.
-// Keeps the wire format stable for the existing client.
 export const NOW_SQL = `to_char((now() at time zone 'utc'), 'YYYY-MM-DD HH24:MI:SS')`;
+
+export type WorkspaceRow = {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+};
 
 export type WorkstreamRow = {
   id: string;
+  workspace_id: string;
   name: string;
   color: string;
   position: number;
@@ -91,8 +98,37 @@ export function serializeTask(row: TaskRow) {
   return { ...row, subtasks };
 }
 
+/** Create a Misc workstream inside a workspace. Returns its id. */
+export async function ensureMiscForWorkspace(workspaceId: string): Promise<string> {
+  const existing = (
+    await q<{ id: string }>(
+      `SELECT id FROM workstreams WHERE workspace_id = $1 AND is_misc = 1 LIMIT 1`,
+      [workspaceId]
+    )
+  ).rows[0];
+  if (existing) return existing.id;
+
+  const id = nanoid();
+  await q(
+    `INSERT INTO workstreams (id, workspace_id, name, color, position, is_misc)
+     VALUES ($1, $2, 'Misc', '#9CA3AF', 0, 1)`,
+    [id, workspaceId]
+  );
+  return id;
+}
+
 export async function initDb() {
-  // Base schema. Booleans are kept as INT 0/1 to match the existing client wire format.
+  // ---- workspaces ----
+  await q(`
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT ${NOW_SQL}
+    );
+  `);
+
+  // ---- workstreams ----
   await q(`
     CREATE TABLE IF NOT EXISTS workstreams (
       id TEXT PRIMARY KEY,
@@ -105,6 +141,7 @@ export async function initDb() {
     );
   `);
 
+  // ---- tasks ----
   await q(`
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
@@ -128,17 +165,59 @@ export async function initDb() {
   await q(`CREATE INDEX IF NOT EXISTS idx_tasks_workstream ON tasks(workstream_id, position);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_tasks_today ON tasks(today_flag, today_position);`);
 
-  // Forward-compatible column additions (in case an older deployment ran first).
+  // Forward-compatible columns (in case an older schema was created first).
   await q(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at TEXT;`);
   await q(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS subtasks TEXT NOT NULL DEFAULT '[]';`);
   await q(`ALTER TABLE workstreams ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';`);
 
-  // Seed Misc workstream once.
-  const misc = await q<{ id: string }>(`SELECT id FROM workstreams WHERE is_misc = 1 LIMIT 1`);
-  if (misc.rows.length === 0) {
-    await q(
-      `INSERT INTO workstreams (id, name, color, position, is_misc) VALUES ($1, 'Misc', '#9CA3AF', 0, 1)`,
-      [nanoid()]
-    );
+  // ---- migration: add workspace_id to workstreams + backfill ----
+  await q(`ALTER TABLE workstreams ADD COLUMN IF NOT EXISTS workspace_id TEXT;`);
+  await q(
+    `CREATE INDEX IF NOT EXISTS idx_workstreams_workspace ON workstreams(workspace_id, position);`
+  );
+
+  // If any workstreams are missing a workspace_id, create / pick a default workspace
+  // and backfill them. This handles upgrades from the pre-workspaces schema.
+  const orphanCount = (
+    await q<{ c: string }>(`SELECT COUNT(*)::text as c FROM workstreams WHERE workspace_id IS NULL`)
+  ).rows[0];
+  if (Number(orphanCount?.c ?? 0) > 0) {
+    let defaultWs = (
+      await q<{ id: string }>(`SELECT id FROM workspaces ORDER BY position ASC LIMIT 1`)
+    ).rows[0];
+    if (!defaultWs) {
+      const id = nanoid();
+      await q(`INSERT INTO workspaces (id, name, position) VALUES ($1, 'Personal', 0)`, [id]);
+      defaultWs = { id };
+    }
+    await q(`UPDATE workstreams SET workspace_id = $1 WHERE workspace_id IS NULL`, [defaultWs.id]);
   }
+
+  // Now enforce NOT NULL + FK on workspace_id (idempotent on Postgres).
+  await q(`ALTER TABLE workstreams ALTER COLUMN workspace_id SET NOT NULL;`);
+  // Add FK only if it isn't already present.
+  await q(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'workstreams_workspace_id_fkey'
+      ) THEN
+        ALTER TABLE workstreams
+          ADD CONSTRAINT workstreams_workspace_id_fkey
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+      END IF;
+    END
+    $$;
+  `);
+
+  // ---- seed: at least one workspace, and a Misc workstream within it ----
+  let firstWs = (
+    await q<{ id: string }>(`SELECT id FROM workspaces ORDER BY position ASC LIMIT 1`)
+  ).rows[0];
+  if (!firstWs) {
+    const id = nanoid();
+    await q(`INSERT INTO workspaces (id, name, position) VALUES ($1, 'Personal', 0)`, [id]);
+    firstWs = { id };
+  }
+  await ensureMiscForWorkspace(firstWs.id);
 }

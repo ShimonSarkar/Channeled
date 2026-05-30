@@ -1,4 +1,4 @@
-import type { AppState, Status, Subtask, Task, Workstream } from './types';
+import type { AppState, Status, Subtask, Task, Workspace, Workstream } from './types';
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -15,9 +15,20 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getState: () => http<AppState>('/api/state'),
+  getState: (workspaceId?: string | null) =>
+    http<AppState>(
+      workspaceId ? `/api/state?workspaceId=${encodeURIComponent(workspaceId)}` : '/api/state'
+    ),
 
-  createWorkstream: (body: { name: string; color: string; notes?: string }) =>
+  listWorkspaces: () => http<Workspace[]>('/api/workspaces'),
+  createWorkspace: (body: { name: string }) =>
+    http<Workspace>('/api/workspaces', { method: 'POST', body: JSON.stringify(body) }),
+  updateWorkspace: (id: string, body: { name?: string }) =>
+    http<Workspace>(`/api/workspaces/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteWorkspace: (id: string) =>
+    http<void>(`/api/workspaces/${id}`, { method: 'DELETE' }),
+
+  createWorkstream: (body: { workspaceId?: string; name: string; color: string; notes?: string }) =>
     http<Workstream>('/api/workstreams', { method: 'POST', body: JSON.stringify(body) }),
   updateWorkstream: (id: string, body: { name?: string; color?: string; notes?: string }) =>
     http<Workstream>(`/api/workstreams/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -27,6 +38,7 @@ export const api = {
     http<void>('/api/workstreams/reorder', { method: 'POST', body: JSON.stringify({ orderedIds }) }),
 
   createTask: (body: {
+    workspaceId?: string;
     workstreamId?: string;
     title: string;
     notes?: string;

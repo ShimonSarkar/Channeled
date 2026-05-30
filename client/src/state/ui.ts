@@ -13,6 +13,9 @@ interface UIState {
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
 
+  currentWorkspaceId: string | null;
+  setCurrentWorkspaceId: (id: string | null) => void;
+
   drawerTaskId: string | null;
   openDrawer: (id: string) => void;
   closeDrawer: () => void;
@@ -29,6 +32,8 @@ interface UIState {
 const stored = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as Theme | null)) || null;
 const prefersDark = typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches;
 const initialTheme: Theme = stored ?? (prefersDark ? 'dark' : 'light');
+const initialWorkspaceId =
+  (typeof localStorage !== 'undefined' && localStorage.getItem('currentWorkspaceId')) || null;
 
 export const useUI = create<UIState>((set, get) => ({
   theme: initialTheme,
@@ -38,6 +43,13 @@ export const useUI = create<UIState>((set, get) => ({
     set({ theme: t });
   },
   toggleTheme: () => get().setTheme(get().theme === 'light' ? 'dark' : 'light'),
+
+  currentWorkspaceId: initialWorkspaceId,
+  setCurrentWorkspaceId: (id) => {
+    if (id) localStorage.setItem('currentWorkspaceId', id);
+    else localStorage.removeItem('currentWorkspaceId');
+    set({ currentWorkspaceId: id });
+  },
 
   drawerTaskId: null,
   openDrawer: (id) => set({ drawerTaskId: id }),

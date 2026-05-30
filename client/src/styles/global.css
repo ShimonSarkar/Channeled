@@ -1692,3 +1692,99 @@ select.select option { background: var(--bg-elev); color: var(--text); }
 .task-row .row-action:focus-visible { opacity: 1; }
 .task-row .row-action:hover { color: var(--text-muted); background: var(--bg-sunken); }
 .task-row .add-subtask-btn { margin-left: 2px; }
+
+/* ---- Workspace switcher (TopBar) ---- */
+.ws-switcher {
+  position: relative;
+  margin-left: 8px;
+}
+.ws-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+}
+.ws-switcher-trigger:hover { background: var(--bg-elev); }
+.ws-switcher-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.ws-switcher-name {
+  font-weight: 600;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-switcher-menu {
+  left: 0;
+  min-width: 240px;
+  padding: 6px;
+}
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+.ws-row:hover { background: var(--bg-sunken); }
+.ws-row.is-active { background: var(--bg-sunken); }
+.ws-row-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  min-width: 0;
+}
+.ws-row-check {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.ws-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-row-editing { padding: 4px; gap: 4px; }
+.ws-row-editing .text-input { flex: 1; }
+.ws-row-add {
+  width: 100%;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.ws-row-add:hover { background: var(--bg-sunken); color: var(--text); }
+.ws-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 2px;
+}

@@ -3,9 +3,10 @@ import cors from 'cors';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initDb, q, serializeTask, type TaskRow } from './db.js';
+import { initDb, q, serializeTask, type TaskRow, type WorkspaceRow } from './db.js';
 import { workstreamsRouter } from './routes/workstreams.js';
 import { tasksRouter } from './routes/tasks.js';
+import { workspacesRouter } from './routes/workspaces.js';
 
 const app = express();
 app.use(cors());
@@ -13,18 +14,42 @@ app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/api/state', async (_req, res, next) => {
+app.get('/api/state', async (req, res, next) => {
   try {
-    const workstreams = (await q('SELECT * FROM workstreams ORDER BY position ASC')).rows;
+    const workspaces = (
+      await q<WorkspaceRow>('SELECT * FROM workspaces ORDER BY position ASC')
+    ).rows;
+    if (workspaces.length === 0) {
+      return res.json({ workspaces: [], currentWorkspaceId: null, workstreams: [], tasks: [] });
+    }
+
+    const requested = typeof req.query.workspaceId === 'string' ? req.query.workspaceId : null;
+    const current =
+      (requested && workspaces.find((w) => w.id === requested)) || workspaces[0];
+
+    const workstreams = (
+      await q(
+        'SELECT * FROM workstreams WHERE workspace_id = $1 ORDER BY position ASC',
+        [current.id]
+      )
+    ).rows;
     const tasks = (
-      await q<TaskRow>('SELECT * FROM tasks ORDER BY position ASC')
+      await q<TaskRow>(
+        `SELECT t.* FROM tasks t
+         JOIN workstreams w ON w.id = t.workstream_id
+         WHERE w.workspace_id = $1
+         ORDER BY t.position ASC`,
+        [current.id]
+      )
     ).rows.map(serializeTask);
-    res.json({ workstreams, tasks });
+
+    res.json({ workspaces, currentWorkspaceId: current.id, workstreams, tasks });
   } catch (err) {
     next(err);
   }
 });
 
+app.use('/api/workspaces', workspacesRouter);
 app.use('/api/workstreams', workstreamsRouter);
 app.use('/api/tasks', tasksRouter);
 

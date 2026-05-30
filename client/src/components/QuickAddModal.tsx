@@ -54,7 +54,7 @@ export function QuickAddModal({ state }: { state: AppState }) {
 
   const handleCreateWs = (name: string, color: string) => {
     createWorkstream.mutate(
-      { name, color },
+      { workspaceId: state.currentWorkspaceId ?? undefined, name, color },
       { onError: (e) => pushToast(`Create failed: ${(e as Error).message}`, 'error') }
     );
   };

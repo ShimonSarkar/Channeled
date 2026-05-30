@@ -6,8 +6,16 @@ export interface Subtask {
   done: boolean;
 }
 
+export interface Workspace {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
 export interface Workstream {
   id: string;
+  workspace_id: string;
   name: string;
   color: string;
   position: number;
@@ -34,6 +42,8 @@ export interface Task {
 }
 
 export interface AppState {
+  workspaces: Workspace[];
+  currentWorkspaceId: string | null;
   workstreams: Workstream[];
   tasks: Task[];
 }

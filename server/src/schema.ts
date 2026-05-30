@@ -8,7 +8,16 @@ export const subtaskSchema = z.object({
   done: z.boolean(),
 });
 
+export const createWorkspaceSchema = z.object({
+  name: z.string().min(1).max(80),
+});
+
+export const updateWorkspaceSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+});
+
 export const createWorkstreamSchema = z.object({
+  workspaceId: z.string().min(1).optional(),
   name: z.string().min(1).max(80),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   notes: z.string().max(20000).optional(),
@@ -25,6 +34,7 @@ export const reorderSchema = z.object({
 });
 
 export const createTaskSchema = z.object({
+  workspaceId: z.string().min(1).optional(),
   workstreamId: z.string().min(1).optional(),
   title: z.string().min(1).max(300),
   notes: z.string().max(20000).optional(),

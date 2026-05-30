@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { q, withTx, serializeTask, NOW_SQL, type TaskRow } from '../db.js';
+import {
+  q,
+  withTx,
+  serializeTask,
+  ensureMiscForWorkspace,
+  NOW_SQL,
+  type TaskRow,
+} from '../db.js';
 import { createTaskSchema, updateTaskSchema, reorderTasksSchema } from '../schema.js';
 
 export const tasksRouter = Router();
@@ -10,11 +17,19 @@ async function loadTask(id: string) {
   return row ? serializeTask(row) : undefined;
 }
 
-async function getMiscId(): Promise<string> {
-  const row = (
-    await q<{ id: string }>('SELECT id FROM workstreams WHERE is_misc = 1 LIMIT 1')
+async function resolveMiscForCreate(workspaceId: string | undefined): Promise<string | null> {
+  if (workspaceId) {
+    const ws = (
+      await q<{ id: string }>('SELECT id FROM workspaces WHERE id = $1', [workspaceId])
+    ).rows[0];
+    if (!ws) return null;
+    return ensureMiscForWorkspace(ws.id);
+  }
+  const first = (
+    await q<{ id: string }>('SELECT id FROM workspaces ORDER BY position ASC LIMIT 1')
   ).rows[0];
-  return row.id;
+  if (!first) return null;
+  return ensureMiscForWorkspace(first.id);
 }
 
 async function nextWorkstreamPosition(workstreamId: string): Promise<number> {
@@ -41,9 +56,15 @@ tasksRouter.post('/', async (req, res, next) => {
     const parsed = createTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const workstreamId = parsed.data.workstreamId ?? (await getMiscId());
-    const ws = (await q('SELECT id FROM workstreams WHERE id = $1', [workstreamId])).rows[0];
-    if (!ws) return res.status(400).json({ error: 'invalid_workstream' });
+    let workstreamId = parsed.data.workstreamId;
+    if (!workstreamId) {
+      const misc = await resolveMiscForCreate(parsed.data.workspaceId);
+      if (!misc) return res.status(400).json({ error: 'invalid_workspace' });
+      workstreamId = misc;
+    } else {
+      const ws = (await q('SELECT id FROM workstreams WHERE id = $1', [workstreamId])).rows[0];
+      if (!ws) return res.status(400).json({ error: 'invalid_workstream' });
+    }
 
     const id = nanoid();
     const position = await nextWorkstreamPosition(workstreamId);

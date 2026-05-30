@@ -32,7 +32,7 @@ export function WorkstreamsList({ state }: { state: AppState }) {
 
   const handleCreate = (name: string, color: string) => {
     createWs.mutate(
-      { name, color },
+      { workspaceId: state.currentWorkspaceId ?? undefined, name, color },
       {
         onSuccess: () => setCreating(false),
         onError: (err) => pushToast(`Create failed: ${(err as Error).message}`, 'error'),
