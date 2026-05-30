@@ -49,6 +49,16 @@ export type WorkspaceRow = {
   id: string;
   name: string;
   position: number;
+  user_id: string | null;
+  created_at: string;
+};
+
+export type UserRow = {
+  id: string;
+  google_id: string;
+  email: string;
+  name: string;
+  picture: string;
   created_at: string;
 };
 
@@ -118,14 +128,44 @@ export async function ensureMiscForWorkspace(workspaceId: string): Promise<strin
 }
 
 export async function initDb() {
+  // ---- users ----
+  await q(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      google_id TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      picture TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT ${NOW_SQL}
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
+
   // ---- workspaces ----
   await q(`
     CREATE TABLE IF NOT EXISTS workspaces (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       position INTEGER NOT NULL DEFAULT 0,
+      user_id TEXT,
       created_at TEXT NOT NULL DEFAULT ${NOW_SQL}
     );
+  `);
+  await q(`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS user_id TEXT;`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_workspaces_user ON workspaces(user_id, position);`);
+  // Add FK only if it isn't already present.
+  await q(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_user_id_fkey'
+      ) THEN
+        ALTER TABLE workspaces
+          ADD CONSTRAINT workspaces_user_id_fkey
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      END IF;
+    END
+    $$;
   `);
 
   // ---- workstreams ----
@@ -210,14 +250,73 @@ export async function initDb() {
     $$;
   `);
 
-  // ---- seed: at least one workspace, and a Misc workstream within it ----
-  let firstWs = (
-    await q<{ id: string }>(`SELECT id FROM workspaces ORDER BY position ASC LIMIT 1`)
+  // ---- seed: per-user seeding happens in ensureUserHasWorkspace on first /api/state. ----
+}
+
+/**
+ * Ensure the given user has at least one workspace (with a Misc workstream).
+ * Returns the user's first workspace id by position.
+ */
+export async function ensureUserHasWorkspace(userId: string): Promise<string> {
+  let first = (
+    await q<{ id: string }>(
+      `SELECT id FROM workspaces WHERE user_id = $1 ORDER BY position ASC LIMIT 1`,
+      [userId]
+    )
   ).rows[0];
-  if (!firstWs) {
+  if (!first) {
     const id = nanoid();
-    await q(`INSERT INTO workspaces (id, name, position) VALUES ($1, 'Personal', 0)`, [id]);
-    firstWs = { id };
+    await q(
+      `INSERT INTO workspaces (id, name, position, user_id) VALUES ($1, 'Personal', 0, $2)`,
+      [id, userId]
+    );
+    first = { id };
   }
-  await ensureMiscForWorkspace(firstWs.id);
+  await ensureMiscForWorkspace(first.id);
+  return first.id;
+}
+
+/**
+ * One-time backfill: assign all workspaces with NULL user_id to the given user.
+ * Used when a designated email logs in for the first time so existing data is preserved.
+ */
+export async function backfillOrphanWorkspaces(userId: string): Promise<number> {
+  const result = await q(
+    `UPDATE workspaces SET user_id = $1 WHERE user_id IS NULL`,
+    [userId]
+  );
+  return result.rowCount ?? 0;
+}
+
+export async function findOrCreateUserByGoogle(profile: {
+  googleId: string;
+  email: string;
+  name: string;
+  picture: string;
+}): Promise<UserRow> {
+  const existing = (
+    await q<UserRow>(`SELECT * FROM users WHERE google_id = $1`, [profile.googleId])
+  ).rows[0];
+  if (existing) {
+    // Refresh email/name/picture in case it changed.
+    if (
+      existing.email !== profile.email ||
+      existing.name !== profile.name ||
+      existing.picture !== profile.picture
+    ) {
+      await q(
+        `UPDATE users SET email = $1, name = $2, picture = $3 WHERE id = $4`,
+        [profile.email, profile.name, profile.picture, existing.id]
+      );
+      return { ...existing, email: profile.email, name: profile.name, picture: profile.picture };
+    }
+    return existing;
+  }
+  const id = nanoid();
+  await q(
+    `INSERT INTO users (id, google_id, email, name, picture) VALUES ($1, $2, $3, $4, $5)`,
+    [id, profile.googleId, profile.email, profile.name, profile.picture]
+  );
+  const created = (await q<UserRow>(`SELECT * FROM users WHERE id = $1`, [id])).rows[0];
+  return created;
 }

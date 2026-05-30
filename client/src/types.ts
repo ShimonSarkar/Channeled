@@ -48,6 +48,13 @@ export interface AppState {
   tasks: Task[];
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  picture: string;
+}
+
 export const STATUS_LABELS: Record<Status, string> = {
   not_started: 'Not started',
   in_progress: 'In progress',

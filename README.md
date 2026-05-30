@@ -9,6 +9,7 @@ A focused task manager organized by color-coded **workstreams**, with a "Work on
 
 ## Features
 - Multiple workspaces with a dropdown switcher; each owns its own workstreams and tasks
+- **Sign in with Google** — every user gets their own private workspaces, workstreams, and tasks
 - Color-coded workstreams, drag-and-drop reordering, subtasks, due dates, rich notes
 - "Today" panel for the day's focus, completed/trash sections, quick-add modal (press `N`)
 - Light/dark theme
@@ -30,8 +31,15 @@ Create `server/.env` (already gitignored):
 DATABASE_URL=postgres://postgres:<your-password>@localhost:5432/channeled
 PGSSL=disable
 PORT=5174
+
+# Google OAuth — create at https://console.cloud.google.com/apis/credentials
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+SESSION_SECRET=run `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+BASE_URL=http://localhost:5174
+CLIENT_URL=http://localhost:5173
 ```
-See [.env.example](.env.example) for reference.
+See [.env.example](.env.example) for the full list. Full OAuth setup walkthrough lives in [DEPLOY.md](DEPLOY.md#7-google-sign-in-oauth).
 
 ### 3. Install & run
 ```powershell

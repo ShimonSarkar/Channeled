@@ -1,14 +1,26 @@
-import type { AppState, Status, Subtask, Task, Workspace, Workstream } from './types';
+import type { AppState, AuthUser, Status, Subtask, Task, Workspace, Workstream } from './types';
+
+export class HttpError extends Error {
+  status: number;
+  detail: unknown;
+  constructor(status: number, statusText: string, detail: unknown) {
+    super(`${status} ${statusText}`);
+    this.status = status;
+    this.detail = detail;
+  }
+}
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
+    // Always include cookies so the session is sent in dev (cross-port) and prod.
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     let detail: unknown = null;
     try { detail = await res.json(); } catch { /* ignore */ }
-    throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(detail)}`);
+    throw new HttpError(res.status, res.statusText, detail);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -67,4 +79,10 @@ export const api = {
     http<void>('/api/tasks/trash/empty', { method: 'POST' }),
   reorderTasks: (body: { scope: 'workstream' | 'today'; workstreamId?: string; orderedIds: string[] }) =>
     http<void>('/api/tasks/reorder', { method: 'POST', body: JSON.stringify(body) }),
+
+  auth: {
+    me: () => http<AuthUser>('/api/auth/me'),
+    logout: () => http<void>('/api/auth/logout', { method: 'POST' }),
+    loginUrl: '/api/auth/google',
+  },
 };

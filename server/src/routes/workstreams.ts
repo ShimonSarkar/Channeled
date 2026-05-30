@@ -1,28 +1,60 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { q, withTx, type WorkstreamRow } from '../db.js';
+import { q, withTx, type UserRow, type WorkstreamRow } from '../db.js';
 import { createWorkstreamSchema, updateWorkstreamSchema, reorderSchema } from '../schema.js';
 
 export const workstreamsRouter = Router();
+
+function userId(req: { user?: UserRow }): string {
+  return (req.user as UserRow).id;
+}
+
+/**
+ * Load a workstream by id only if it belongs to a workspace owned by `uid`.
+ * Returns null otherwise (caller responds 404 to avoid leaking existence).
+ */
+async function loadOwnedWorkstream(id: string, uid: string): Promise<WorkstreamRow | null> {
+  const row = (
+    await q<WorkstreamRow>(
+      `SELECT ws.*
+       FROM workstreams ws
+       JOIN workspaces w ON w.id = ws.workspace_id
+       WHERE ws.id = $1 AND w.user_id = $2`,
+      [id, uid]
+    )
+  ).rows[0];
+  return row ?? null;
+}
+
+async function workspaceBelongsToUser(workspaceId: string, uid: string): Promise<boolean> {
+  const row = (
+    await q<{ id: string }>(
+      `SELECT id FROM workspaces WHERE id = $1 AND user_id = $2`,
+      [workspaceId, uid]
+    )
+  ).rows[0];
+  return !!row;
+}
 
 workstreamsRouter.post('/', async (req, res, next) => {
   try {
     const parsed = createWorkstreamSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    // Resolve target workspace (explicit, or first by position as a fallback).
+    const uid = userId(req);
+    // Resolve target workspace (explicit, or first by position for this user).
     let workspaceId = parsed.data.workspaceId;
     if (!workspaceId) {
       const ws = (
-        await q<{ id: string }>(`SELECT id FROM workspaces ORDER BY position ASC LIMIT 1`)
+        await q<{ id: string }>(
+          `SELECT id FROM workspaces WHERE user_id = $1 ORDER BY position ASC LIMIT 1`,
+          [uid]
+        )
       ).rows[0];
       if (!ws) return res.status(400).json({ error: 'no_workspace' });
       workspaceId = ws.id;
-    } else {
-      const ws = (
-        await q<{ id: string }>(`SELECT id FROM workspaces WHERE id = $1`, [workspaceId])
-      ).rows[0];
-      if (!ws) return res.status(400).json({ error: 'invalid_workspace' });
+    } else if (!(await workspaceBelongsToUser(workspaceId, uid))) {
+      return res.status(400).json({ error: 'invalid_workspace' });
     }
 
     const maxRow = (
@@ -48,9 +80,7 @@ workstreamsRouter.patch('/:id', async (req, res, next) => {
     const parsed = updateWorkstreamSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-    const existing = (
-      await q<WorkstreamRow>('SELECT * FROM workstreams WHERE id = $1', [req.params.id])
-    ).rows[0];
+    const existing = await loadOwnedWorkstream(req.params.id, userId(req));
     if (!existing) return res.status(404).json({ error: 'not_found' });
 
     const name = parsed.data.name ?? existing.name;
@@ -71,9 +101,7 @@ workstreamsRouter.patch('/:id', async (req, res, next) => {
 
 workstreamsRouter.delete('/:id', async (req, res, next) => {
   try {
-    const existing = (
-      await q<WorkstreamRow>('SELECT * FROM workstreams WHERE id = $1', [req.params.id])
-    ).rows[0];
+    const existing = await loadOwnedWorkstream(req.params.id, userId(req));
     if (!existing) return res.status(404).json({ error: 'not_found' });
     if (existing.is_misc) return res.status(400).json({ error: 'cannot_delete_misc' });
     await q('DELETE FROM workstreams WHERE id = $1', [req.params.id]);
@@ -88,12 +116,16 @@ workstreamsRouter.post('/reorder', async (req, res, next) => {
     const parsed = reorderSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    const uid = userId(req);
     await withTx(async (client) => {
       for (let i = 0; i < parsed.data.orderedIds.length; i++) {
-        await client.query('UPDATE workstreams SET position = $1 WHERE id = $2', [
-          i,
-          parsed.data.orderedIds[i],
-        ]);
+        // JOIN + user_id ensures we only touch this user's workstreams.
+        await client.query(
+          `UPDATE workstreams SET position = $1
+           WHERE id = $2
+             AND workspace_id IN (SELECT id FROM workspaces WHERE user_id = $3)`,
+          [i, parsed.data.orderedIds[i], uid]
+        );
       }
     });
     res.status(204).end();

@@ -9,6 +9,7 @@ import {
 } from '@dnd-kit/core';
 import {
   useAppState,
+  useAuth,
   useReorderTasks,
   useReorderWorkstreams,
   useUpdateTask,
@@ -23,8 +24,24 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { QuickAddModal } from './components/QuickAddModal';
 import { ToastHost, useToasts } from './components/Toast';
 import { DueBanner } from './components/DueBanner';
+import { LoginScreen } from './components/LoginScreen';
 
 export default function App() {
+  const auth = useAuth();
+  // While auth status is unknown, show a minimal loader so we never flash the
+  // unauthenticated UI to a signed-in user (and vice versa).
+  if (auth.isLoading) {
+    return (
+      <div className="app-loader" role="status" aria-live="polite">
+        Loading…
+      </div>
+    );
+  }
+  if (!auth.data) return <LoginScreen />;
+  return <AuthedApp />;
+}
+
+function AuthedApp() {
   const { data, isLoading, error } = useAppState();
   const { setQuickAdd, closeDrawer, drawerTaskId, quickAddOpen, popUndo } = useUI();
   const reorderTasks = useReorderTasks();

@@ -17,6 +17,19 @@ services:
         fromDatabase:
           name: channeled-db
           property: connectionString
+      # Auth (Google OAuth). Fill these in via the Render dashboard.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      # Same-origin in prod, so BASE_URL is the public site URL.
+      - key: BASE_URL
+        value: https://channeled.onrender.com
+      # Optional: claim pre-auth workspaces for this email on first login.
+      - key: BACKFILL_USER_EMAIL
+        sync: false
 
 databases:
   - name: channeled-db

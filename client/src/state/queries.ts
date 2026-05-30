@@ -1,11 +1,41 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
-import type { AppState, Status, Subtask, Task } from '../types';
+import { api, HttpError } from '../api';
+import type { AppState, AuthUser, Status, Subtask, Task } from '../types';
 import { useUI } from './ui';
 
 export const stateKey = (workspaceId: string | null | undefined) =>
   ['state', workspaceId ?? null] as const;
+
+export const authKey = ['auth', 'me'] as const;
+
+export function useAuth() {
+  return useQuery<AuthUser | null>({
+    queryKey: authKey,
+    queryFn: async () => {
+      try {
+        return await api.auth.me();
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 401) return null;
+        throw err;
+      }
+    },
+    // Treat the cached user as fresh for a minute to avoid refetching on every focus.
+    staleTime: 1000 * 60,
+    retry: false,
+  });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.auth.logout(),
+    onSuccess: () => {
+      // Drop all cached data so the next user starts clean.
+      qc.clear();
+    },
+  });
+}
 
 export function useAppState() {
   const currentWorkspaceId = useUI((s) => s.currentWorkspaceId);

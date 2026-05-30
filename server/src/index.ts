@@ -1,24 +1,71 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import passport from 'passport';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initDb, q, serializeTask, type TaskRow, type WorkspaceRow } from './db.js';
+import {
+  ensureUserHasWorkspace,
+  initDb,
+  q,
+  serializeTask,
+  type TaskRow,
+  type UserRow,
+  type WorkspaceRow,
+} from './db.js';
 import { workstreamsRouter } from './routes/workstreams.js';
 import { tasksRouter } from './routes/tasks.js';
 import { workspacesRouter } from './routes/workspaces.js';
+import {
+  authRouter,
+  buildSessionMiddleware,
+  configurePassport,
+  requireAuth,
+} from './auth.js';
 
 const app = express();
-app.use(cors());
+// In dev the client (5173) and server (5174) live on the same host but different
+// ports, so credentialed cross-origin requests need explicit origin + credentials.
+const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '1mb' }));
+
+// Behind Render's proxy, secure cookies need this so express trusts X-Forwarded-Proto.
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+
+app.use(buildSessionMiddleware());
+configurePassport();
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/api/state', async (req, res, next) => {
+app.use('/api/auth', authRouter);
+
+app.get('/api/state', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as UserRow;
+    // Ensure the user always has at least one workspace (with Misc).
+    await ensureUserHasWorkspace(user.id);
+
     const workspaces = (
-      await q<WorkspaceRow>('SELECT * FROM workspaces ORDER BY position ASC')
+      await q<WorkspaceRow>(
+        'SELECT * FROM workspaces WHERE user_id = $1 ORDER BY position ASC',
+        [user.id]
+      )
     ).rows;
     if (workspaces.length === 0) {
       return res.json({ workspaces: [], currentWorkspaceId: null, workstreams: [], tasks: [] });
@@ -50,9 +97,9 @@ app.get('/api/state', async (req, res, next) => {
   }
 });
 
-app.use('/api/workspaces', workspacesRouter);
-app.use('/api/workstreams', workstreamsRouter);
-app.use('/api/tasks', tasksRouter);
+app.use('/api/workspaces', requireAuth, workspacesRouter);
+app.use('/api/workstreams', requireAuth, workstreamsRouter);
+app.use('/api/tasks', requireAuth, tasksRouter);
 
 // Serve the built client (single Render Web Service hosting API + static UI).
 const __dirname = dirname(fileURLToPath(import.meta.url));
