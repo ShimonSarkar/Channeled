@@ -128,6 +128,21 @@ export async function ensureMiscForWorkspace(workspaceId: string): Promise<strin
 }
 
 export async function initDb() {
+  // ---- session (express-session via connect-pg-simple) ----
+  // We create this explicitly instead of relying on connect-pg-simple's
+  // `createTableIfMissing` because that option silently fails to provision
+  // the table in some environments, causing every login to round-trip back
+  // to the sign-in screen (passport.session() can never persist the user).
+  await q(`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid"    varchar      NOT NULL COLLATE "default",
+      "sess"   json         NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`);
+
   // ---- users ----
   await q(`
     CREATE TABLE IF NOT EXISTS users (
