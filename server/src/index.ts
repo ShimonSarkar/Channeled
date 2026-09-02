@@ -24,6 +24,7 @@ import {
   requireAuth,
 } from './auth.js';
 
+const databaseReady = initDb();
 const app = express();
 // In dev the client (47821) and server (47822) live on the same host but different
 // ports, so credentialed cross-origin requests need explicit origin + credentials.
@@ -42,6 +43,15 @@ app.use(
   })
 );
 app.use(express.json({ limit: '1mb' }));
+
+app.use(async (_req, _res, next) => {
+  try {
+    await databaseReady;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.use(buildSessionMiddleware());
 configurePassport();
@@ -124,13 +134,11 @@ app.use(
 
 const port = Number(process.env.PORT ?? 47822);
 
-initDb()
-  .then(() => {
-    app.listen(port, () => {
-      console.log(`[server] listening on http://localhost:${port}`);
-    });
-  })
-  .catch((err) => {
-    console.error('[server] failed to initialize database', err);
-    process.exit(1);
-  });
+const server = app.listen(port, () => {
+  console.log(`[server] listening on http://localhost:${port}`);
+});
+
+databaseReady.catch((err) => {
+  console.error('[server] failed to initialize database', err);
+  server.close(() => process.exit(1));
+});
