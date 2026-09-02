@@ -10,8 +10,8 @@ if (!connectionString) {
   );
 }
 
-// Render's managed Postgres requires SSL. Allow opting out for local dev via PGSSL=disable.
-const useSsl = (process.env.PGSSL ?? 'require') !== 'disable';
+// Local Postgres normally runs without SSL; PGSSL=require remains available when needed.
+const useSsl = (process.env.PGSSL ?? 'disable') !== 'disable';
 
 export const pool = new Pool({
   connectionString,

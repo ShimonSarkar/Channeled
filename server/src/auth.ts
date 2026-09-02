@@ -14,10 +14,10 @@ import {
 const SESSION_SECRET = process.env.SESSION_SECRET ?? 'dev-only-change-me';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? '';
-// e.g. http://localhost:5174 (dev) or https://channeled.onrender.com (prod)
-const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5174';
+// Express API origin used to construct the OAuth callback URL.
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:47822';
 // Where to send the browser after a successful login. Defaults to BASE_URL so
-// production (single-origin) works; in dev set CLIENT_URL=http://localhost:5173.
+// production (single-origin) works; in dev set CLIENT_URL=http://localhost:47821.
 const CLIENT_URL = process.env.CLIENT_URL ?? BASE_URL;
 // Optional: when this email logs in for the first time, all workspaces with
 // NULL user_id are reassigned to them. Used to migrate pre-auth data.
@@ -42,7 +42,7 @@ export function buildSessionMiddleware() {
     cookie: {
       httpOnly: true,
       // In production we serve UI + API from the same origin; in dev the client
-      // is on :5173 and the server on :5174 (same host, different port) which
+      // is on :47821 and the server on :47822 (same host, different port) which
       // browsers treat the same for cookie scope. `lax` is correct in both.
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',

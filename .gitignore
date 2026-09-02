@@ -7,6 +7,7 @@ build/
 .env.local
 server/data/
 *.tsbuildinfo
+*.sql
 
 # Local-only docs
 Changing Local GiHub to Personal.md

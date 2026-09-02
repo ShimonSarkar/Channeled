@@ -25,9 +25,9 @@ import {
 } from './auth.js';
 
 const app = express();
-// In dev the client (5173) and server (5174) live on the same host but different
+// In dev the client (47821) and server (47822) live on the same host but different
 // ports, so credentialed cross-origin requests need explicit origin + credentials.
-const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
+const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:47821')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -42,9 +42,6 @@ app.use(
   })
 );
 app.use(express.json({ limit: '1mb' }));
-
-// Behind Render's proxy, secure cookies need this so express trusts X-Forwarded-Proto.
-if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
 app.use(buildSessionMiddleware());
 configurePassport();
@@ -101,7 +98,7 @@ app.use('/api/workspaces', requireAuth, workspacesRouter);
 app.use('/api/workstreams', requireAuth, workstreamsRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 
-// Serve the built client (single Render Web Service hosting API + static UI).
+// Serve the built client when running the compiled app locally.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const clientDist =
   process.env.CLIENT_DIST ?? resolve(__dirname, '../../client/dist');
@@ -125,7 +122,7 @@ app.use(
   }
 );
 
-const port = Number(process.env.PORT ?? 5174);
+const port = Number(process.env.PORT ?? 47822);
 
 initDb()
   .then(() => {
